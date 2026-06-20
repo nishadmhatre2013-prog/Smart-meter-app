@@ -33,6 +33,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -76,6 +80,15 @@ data class RssiSnapshot(
     val rssi: Int
 )
 
+enum class AccountTier {
+    NORMAL, PREMIUM
+}
+
+data class UserAccount(
+    val email: String,
+    val tier: AccountTier
+)
+
 // Data classes representing smart meters discovered
 data class BleMeter(
     val name: String,
@@ -114,7 +127,7 @@ data class MeterTelemetry(
             val power = (volt * curr) / 1000.0
             val freq = 50.0 + Random.nextDouble(-0.1, 0.1)
             val batt = Random.nextInt(75, 100)
-            val kwh = 1240.5 + Random.nextDouble(1.0, 100.0)
+            val kwh = 78190.0 + Random.nextDouble(1.0, 10.0)
             val alert = if (Random.nextDouble() > 0.95) "High Load Warning" else null
             return MeterTelemetry(volt, curr, power, freq, batt, kwh, alert)
         }
@@ -140,8 +153,83 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
     private val _isSimulationMode = MutableStateFlow(false)
     val isSimulationMode: StateFlow<Boolean> = _isSimulationMode.asStateFlow()
 
+    private val _currentUser = MutableStateFlow<UserAccount?>(null)
+    val currentUser: StateFlow<UserAccount?> = _currentUser.asStateFlow()
+
+    private val prefs = context.getSharedPreferences("ble_scanner_prefs", Context.MODE_PRIVATE)
+
     private val _discoveredMeters = MutableStateFlow<List<BleMeter>>(emptyList())
-    val discoveredMeters: StateFlow<List<BleMeter>> = _discoveredMeters.asStateFlow()
+    val discoveredMeters: StateFlow<List<BleMeter>> = combine(_discoveredMeters, _currentUser) { meters, user ->
+        if (user?.tier == AccountTier.PREMIUM) {
+            meters
+        } else {
+            meters.take(1)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun login(email: String, tier: AccountTier) {
+        val account = UserAccount(email, tier)
+        _currentUser.value = account
+        prefs.edit().apply {
+            putString("user_email", email)
+            putString("user_tier", tier.name)
+            apply()
+        }
+        appendSerialLog("INFO", "Account logged in: $email (${tier.name}_TIER)")
+    }
+
+    fun registerUser(email: String, password: String, tier: AccountTier): Boolean {
+        if (email.isBlank() || password.isBlank()) return false
+        prefs.edit().apply {
+            putString("reg_pwd_$email", password)
+            putString("reg_tier_$email", tier.name)
+            apply()
+        }
+        appendSerialLog("INFO", "Registered user: $email as ${tier.name}")
+        return true
+    }
+
+    fun verifyAndLogin(email: String, password: String): Boolean {
+        if (email.isBlank() || password.isBlank()) return false
+        val storedPassword = prefs.getString("reg_pwd_$email", null)
+        val storedTierStr = prefs.getString("reg_tier_$email", null)
+        
+        if (storedPassword != null && storedPassword == password && storedTierStr != null) {
+            val tier = try {
+                AccountTier.valueOf(storedTierStr)
+            } catch (e: Exception) {
+                AccountTier.NORMAL
+            }
+            login(email, tier)
+            return true
+        }
+        
+        // Fallback or default profiles
+        if (email == "premium@smartmeter.com" && password == "password123") {
+            login(email, AccountTier.PREMIUM)
+            return true
+        }
+        if (email == "normal@smartmeter.com" && password == "password123") {
+            login(email, AccountTier.NORMAL)
+            return true
+        }
+        
+        return false
+    }
+
+    fun isEmailRegistered(email: String): Boolean {
+        return prefs.contains("reg_pwd_$email")
+    }
+
+    fun logout() {
+        _currentUser.value = null
+        prefs.edit().apply {
+            remove("user_email")
+            remove("user_tier")
+            apply()
+        }
+        appendSerialLog("INFO", "Account logged out. Guest tier active.")
+    }
 
     private val _bluetoothState = MutableStateFlow("UNKNOWN") // ON, OFF, NOT_SUPPORTED, UNKNOWN
     val bluetoothState: StateFlow<String> = _bluetoothState.asStateFlow()
@@ -151,6 +239,20 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
 
     private val _selectedMeterDetail = MutableStateFlow<BleMeter?>(null)
     val selectedMeterDetail: StateFlow<BleMeter?> = _selectedMeterDetail.asStateFlow()
+
+    private val _recentlyViewedMeters = MutableStateFlow<List<BleMeter>>(emptyList())
+    val recentlyViewedMeters: StateFlow<List<BleMeter>> = _recentlyViewedMeters.asStateFlow()
+
+    fun addToRecentlyViewed(meter: BleMeter) {
+        val current = _recentlyViewedMeters.value.toMutableList()
+        current.removeAll { it.address == meter.address }
+        current.add(0, meter)
+        _recentlyViewedMeters.value = current.take(6) // Keep top 6 recently viewed
+    }
+
+    fun clearRecentlyViewed() {
+        _recentlyViewedMeters.value = emptyList()
+    }
 
     private val _currentThemeIndex = MutableStateFlow(0)
     val currentThemeIndex: StateFlow<Int> = _currentThemeIndex.asStateFlow()
@@ -253,20 +355,52 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
 
     private var scanRssiJob: Job? = null
 
+    fun toggleSimulationMode(enabled: Boolean) {
+        _isSimulationMode.value = enabled
+        if (enabled) {
+            val current = _discoveredMeters.value.toMutableList()
+            val simulatedAddresses = listOf("DE:AD:BE:EF:01:02", "FA:CE:B0:0C:03:04", "CA:FE:BA:BE:05:06")
+            val names = listOf("M22615-A (Smart Meter)", "M22615-B (Gas Transceiver)", "M22615-C (Grid Volts)")
+            val bases = listOf(-55, -72, -87)
+            
+            simulatedAddresses.forEachIndexed { idx, addr ->
+                if (!current.any { it.address == addr }) {
+                    current.add(BleMeter(
+                        name = names[idx],
+                        address = addr,
+                        rssi = bases[idx],
+                        isSimulated = true,
+                        telemetry = MeterTelemetry.generateRandom()
+                    ))
+                }
+            }
+            _discoveredMeters.value = current.sortedByDescending { it.rssi }
+            appendSerialLog("INFO", "Simulation Engine initialized with ${simulatedAddresses.size} virtual meters.")
+        } else {
+            val current = _discoveredMeters.value.filter { !it.isSimulated }
+            _discoveredMeters.value = current
+            appendSerialLog("INFO", "Simulation Engine deactivated.")
+        }
+    }
+
     private fun startScanRssiUpdates() {
         scanRssiJob?.cancel()
         scanRssiJob = viewModelScope.launch {
             while (true) {
                 delay(1500)
-                if (_isScanning.value && _discoveredMeters.value.isNotEmpty()) {
+                val isSim = _isSimulationMode.value
+                val isScan = _isScanning.value
+                if ((isScan || isSim) && _discoveredMeters.value.isNotEmpty()) {
                     _discoveredMeters.value = _discoveredMeters.value.map { meter ->
-                        // Add slight RSSI jitter
-                        val jitter = Random.nextInt(-2, 3)
-                        val newRssi = (meter.rssi + jitter).coerceIn(-100, -30)
-                        meter.withNewRssi(newRssi)
+                        if ((meter.isSimulated && isSim) || isScan) {
+                            val jitter = Random.nextInt(-2, 3)
+                            val newRssi = (meter.rssi + jitter).coerceIn(-100, -30)
+                            meter.withNewRssi(newRssi)
+                        } else {
+                            meter
+                        }
                     }.sortedByDescending { it.rssi }
                     
-                    // Sync current selected details also
                     val currentSelect = _selectedMeterDetail.value
                     if (currentSelect != null) {
                         _selectedMeterDetail.value = _discoveredMeters.value.find { it.address == currentSelect.address }
@@ -400,17 +534,33 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
     private var scanJob: Job? = null
 
     init {
+        // Load stored user account if any
+        val storedEmail = prefs.getString("user_email", null)
+        val storedTierStr = prefs.getString("user_tier", null)
+        if (storedEmail != null && storedTierStr != null) {
+            try {
+                val tier = AccountTier.valueOf(storedTierStr)
+                _currentUser.value = UserAccount(storedEmail, tier)
+            } catch (e: Exception) {
+                _currentUser.value = null
+            }
+        }
+
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
         updateBluetoothState()
         checkPermissionsState()
         startConnectedRssiPolling()
+        startScanRssiUpdates()
     }
 
     private val _gattConnections = mutableMapOf<String, BluetoothGatt>()
 
     fun selectMeter(meter: BleMeter?) {
         _selectedMeterDetail.value = meter
+        if (meter != null) {
+            addToRecentlyViewed(meter)
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -429,6 +579,50 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
                 _gattConnections.remove(address)
                 updateMeterConnectionState(address, ConnectionState.ERROR, "Connection timed out")
             }
+        }
+
+        if (meter.isSimulated) {
+            viewModelScope.launch {
+                delay(800)
+                updateMeterConnectionState(address, ConnectionState.CONNECTED)
+                delay(500)
+                updateMeterConnectionState(address, ConnectionState.DISCOVERING_SERVICES)
+                delay(1000)
+                
+                val virtualServices = listOf(
+                    BleServiceInfo(
+                        uuid = "0000180A-0000-1000-8000-00805F9B34FB",
+                        name = "Device Information Service",
+                        characteristics = listOf(
+                            BleCharacteristicInfo("00002A29-0000-1000-8000-00805F9B34FB", "Manufacturer Name", "Demo Utility Corp", "READ"),
+                            BleCharacteristicInfo("00002A24-0000-1000-8000-00805F9B34FB", "Model Number", "DLMS-M22615", "READ"),
+                            BleCharacteristicInfo("00002A26-0000-1000-8000-00805F9B34FB", "Firmware Revision", "v4.18.2-SIM", "READ")
+                        )
+                    ),
+                    BleServiceInfo(
+                        uuid = "0000180F-0000-1000-8000-00805F9B34FB",
+                        name = "Battery Service",
+                        characteristics = listOf(
+                            BleCharacteristicInfo("00002A19-0000-1000-8000-00805F9B34FB", "Battery Level", "${meter.telemetry.batteryPercentage}", "READ, NOTIFY")
+                        )
+                    ),
+                    BleServiceInfo(
+                        uuid = "0000FFA0-0000-1000-8000-00805F9B34FB",
+                        name = "Smart Meter Proprietary Service",
+                        characteristics = listOf(
+                            BleCharacteristicInfo("0000FFA1-0000-1000-8000-00805F9B34FB", "Active Load Power", "%.3f".format(meter.telemetry.activePowerKw), "READ, NOTIFY"),
+                            BleCharacteristicInfo("0000FFA2-0000-1000-8000-00805F9B34FB", "RMS Line Voltage", "%.1f".format(meter.telemetry.voltage), "READ"),
+                            BleCharacteristicInfo("0000FFA3-0000-1000-8000-00805F9B34FB", "Current Draw", "%.2f".format(meter.telemetry.current), "READ"),
+                            BleCharacteristicInfo("0000FFA4-0000-1000-8000-00805F9B34FB", "Grid Frequency", "%.2f".format(meter.telemetry.gridFrequencyHz), "READ"),
+                            BleCharacteristicInfo("0000FFA5-0000-1000-8000-00805F9B34FB", "Cumulative Energy Usage", "%.1f".format(meter.telemetry.cumulativeKwh), "READ")
+                        )
+                    )
+                )
+                
+                updateMeterServices(address, virtualServices)
+                updateMeterConnectionState(address, ConnectionState.SERVICES_DISCOVERED)
+            }
+            return
         }
 
         if (bluetoothAdapter == null || _bluetoothState.value != "ON") {
@@ -558,6 +752,11 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
 
     @SuppressLint("MissingPermission")
     fun disconnectMeter(address: String) {
+        val meter = _discoveredMeters.value.find { it.address == address }
+        if (meter != null && meter.isSimulated) {
+            updateMeterConnectionState(address, ConnectionState.DISCONNECTED)
+            return
+        }
         _gattConnections[address]?.disconnect()
         _gattConnections[address]?.close()
         _gattConnections.remove(address)
@@ -566,6 +765,31 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
 
     @SuppressLint("MissingPermission")
     fun readCharacteristic(address: String, serviceUuid: String, charUuid: String) {
+        val meter = _discoveredMeters.value.find { it.address == address }
+        if (meter != null && meter.isSimulated) {
+            appendSerialLog("TX", "AT+READ_CHAR=$charUuid")
+            viewModelScope.launch {
+                delay(300)
+                val services = meter.services
+                val service = services.find { it.uuid == serviceUuid }
+                val char = service?.characteristics?.find { it.uuid == charUuid }
+                if (char != null) {
+                    val newVal = when (charUuid) {
+                        "00002A19-0000-1000-8000-00805F9B34FB" -> "${meter.telemetry.batteryPercentage}"
+                        "0000FFA1-0000-1000-8000-00805F9B34FB" -> "%.3f".format(meter.telemetry.activePowerKw + Random.nextDouble(-0.1, 0.1))
+                        "0000FFA2-0000-1000-8000-00805F9B34FB" -> "%.1f".format(meter.telemetry.voltage + Random.nextDouble(-0.5, 0.5))
+                        "0000FFA3-0000-1000-8000-00805F9B34FB" -> "%.2f".format(meter.telemetry.current + Random.nextDouble(-0.05, 0.05))
+                        "0000FFA4-0000-1000-8000-00805F9B34FB" -> "%.2f".format(meter.telemetry.gridFrequencyHz + Random.nextDouble(-0.002, 0.002))
+                        "0000FFA5-0000-1000-8000-00805F9B34FB" -> "%.3f".format(meter.telemetry.cumulativeKwh + 0.125)
+                        else -> char.value
+                    }
+                    updateCharacteristicValue(address, serviceUuid, charUuid, newVal)
+                    appendSerialLog("RX", "CHAR_VAL=$newVal")
+                    appendSerialLog("DECODE", "$charUuid: Decoded value changed -> $newVal")
+                }
+            }
+            return
+        }
         val gatt = _gattConnections[address] ?: return
         try {
             val service = gatt.getService(java.util.UUID.fromString(serviceUuid))
