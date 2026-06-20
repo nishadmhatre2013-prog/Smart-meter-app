@@ -2,6 +2,8 @@ package com.example
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -274,6 +277,7 @@ fun BleScannerTab(
     val showAllBleDevices by viewModel.showAllBleDevices.collectAsState()
     val scanFilterPrefix by viewModel.scanFilterPrefix.collectAsState()
     val isSimulationMode by viewModel.isSimulationMode.collectAsState()
+    val listState = rememberLazyListState()
     
     var searchQuery by remember { mutableStateOf("") }
     val filteredMeters = remember(discoveredMeters, searchQuery) {
@@ -376,7 +380,7 @@ fun BleScannerTab(
 
         // Account Profile & Plan Status Panel
         val currentUser by viewModel.currentUser.collectAsState()
-        var showLoginDialog by remember { mutableStateOf(false) }
+        var showLoginDialog by remember { mutableStateOf(currentUser == null) }
 
         Card(
             modifier = Modifier
@@ -562,6 +566,7 @@ fun BleScannerTab(
         }
 
         // Bluetooth hardware status card (No antenna scanner references!)
+        val context = LocalContext.current
         StateControlIndicator(
             isScanning = isScanning,
             bluetoothState = bluetoothState,
@@ -570,6 +575,10 @@ fun BleScannerTab(
             theme = theme,
             onGrantClicked = {
                 permissionsLauncher.launch(viewModel.getRequiredPermissionsList().toTypedArray())
+            },
+            onEnableBluetoothClicked = {
+                val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                context.startActivity(intent)
             }
         )
 
@@ -711,69 +720,6 @@ fun BleScannerTab(
         }
 
         Spacer(modifier = Modifier.height(10.dp))
-
-        // Dynamic Real-time Meter Search Bar
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 2.dp),
-            colors = CardDefaults.cardColors(containerColor = theme.cardBg),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, theme.border)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = "SEARCH DISCOVERED METERS",
-                    fontSize = 10.sp,
-                    color = theme.accent,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("meters_search_input"),
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = theme.textPrimary),
-                    placeholder = { Text("Search by name, address, V, kW, Usage, alerts...", fontSize = 12.sp, color = theme.textSecondary) },
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search icon",
-                            tint = theme.textSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(
-                                onClick = { searchQuery = "" },
-                                modifier = Modifier.size(24.dp).testTag("clear_search_btn")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear Search text",
-                                    tint = theme.textSecondary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = theme.accent,
-                        unfocusedBorderColor = theme.border,
-                        focusedContainerColor = theme.background,
-                        unfocusedContainerColor = theme.background
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-            }
-        }
-
         Spacer(modifier = Modifier.height(10.dp))
 
         // Recently Viewed Row implementation
@@ -1000,6 +946,7 @@ fun BleScannerTab(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .testTag("meters_list"),
@@ -1613,6 +1560,10 @@ fun DeviceDetailsScreen(
             }
         }
 
+        if (detailsTab == 1) {
+            item { SerialDataView(viewModel, theme) }
+        }
+
         if (detailsTab == 0) {
             // Live stats fields
             item {
@@ -2070,7 +2021,8 @@ fun StateControlIndicator(
     permissionsGranted: Boolean,
     metersCount: Int,
     theme: BleAppTheme,
-    onGrantClicked: () -> Unit
+    onGrantClicked: () -> Unit,
+    onEnableBluetoothClicked: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -2109,6 +2061,12 @@ fun StateControlIndicator(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    if (bluetoothState == "OFF") {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        TextButton(onClick = onEnableBluetoothClicked) {
+                            Text("Enable Bluetooth", fontSize = 10.sp)
+                        }
+                    }
                 }
 
                 Box(
@@ -3232,7 +3190,6 @@ fun AccountProfileDialog(
     var isRegisterMode by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var selectedTier by remember { mutableStateOf(AccountTier.NORMAL) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
     
@@ -3366,7 +3323,8 @@ fun AccountProfileDialog(
                         // Normal Demo
                         Card(
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
                                 .clickable {
                                     viewModel.login("normal@smartmeter.com", AccountTier.NORMAL)
                                     onDismissRequest()
@@ -3392,49 +3350,6 @@ fun AccountProfileDialog(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = theme.textPrimary
-                                )
-                                Text(
-                                    text = "1 Meter Limit",
-                                    fontSize = 8.sp,
-                                    color = theme.textSecondary
-                                )
-                            }
-                        }
-                        
-                        // Premium Demo
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    viewModel.login("premium@smartmeter.com", AccountTier.PREMIUM)
-                                    onDismissRequest()
-                                }
-                                .testTag("login_premium_demo_btn"),
-                            colors = CardDefaults.cardColors(containerColor = theme.primary.copy(alpha = 0.1f)),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, theme.primary)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Star,
-                                    contentDescription = "Premium Crown Profile",
-                                    tint = theme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "PREMIUM",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = theme.primary
-                                )
-                                Text(
-                                    text = "Unlimited Access",
-                                    fontSize = 8.sp,
-                                    color = theme.textPrimary.copy(alpha = 0.8f)
                                 )
                             }
                         }
@@ -3474,16 +3389,17 @@ fun AccountProfileDialog(
                         // Normal select
                         Card(
                             modifier = Modifier
-                                .weight(1f)
-                                .clickable { selectedTier = AccountTier.NORMAL }
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
+                                .clickable { /* Tier locked to NORMAL */ }
                                 .testTag("select_tier_normal"),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (selectedTier == AccountTier.NORMAL) theme.border.copy(alpha = 0.3f) else theme.background
+                                containerColor = theme.border.copy(alpha = 0.3f)
                             ),
                             shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(
-                                width = if (selectedTier == AccountTier.NORMAL) 2.dp else 1.dp,
-                                color = if (selectedTier == AccountTier.NORMAL) theme.accent else theme.border
+                                width = 2.dp,
+                                color = theme.accent
                             )
                         ) {
                             Column(
@@ -3491,50 +3407,10 @@ fun AccountProfileDialog(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "NORMAL",
+                                    text = "NORMAL TIER (Default)",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Black,
                                     color = theme.accent
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Limited to 1 meter scan",
-                                    fontSize = 8.sp,
-                                    color = theme.textSecondary
-                                )
-                            }
-                        }
-                        
-                        // Premium select
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { selectedTier = AccountTier.PREMIUM }
-                                .testTag("select_tier_premium"),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (selectedTier == AccountTier.PREMIUM) theme.primary.copy(alpha = 0.15f) else theme.background
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(
-                                width = if (selectedTier == AccountTier.PREMIUM) 2.dp else 1.dp,
-                                color = if (selectedTier == AccountTier.PREMIUM) theme.primary else theme.border
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "PREMIUM",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = theme.primary
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Unlimited device scan",
-                                    fontSize = 8.sp,
-                                    color = theme.textSecondary
                                 )
                             }
                         }
@@ -3591,6 +3467,7 @@ fun AccountProfileDialog(
                     label = { Text("App Password", fontSize = 11.sp) },
                     placeholder = { Text("Min. 4 characters", fontSize = 11.sp) },
                     singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = theme.textPrimary,
                         unfocusedTextColor = theme.textPrimary,
@@ -3643,30 +3520,32 @@ fun AccountProfileDialog(
                     Spacer(modifier = Modifier.width(10.dp))
                     Button(
                         onClick = {
-                            if (email.isBlank() || password.isBlank()) {
+                            val trimmedEmail = email.trim()
+                            val trimmedPassword = password.trim()
+                            if (trimmedEmail.isBlank() || trimmedPassword.isBlank()) {
                                 errorMessage = "Please complete all Email and Password fields."
                                 return@Button
                             }
-                            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                                errorMessage = "Please enter a valid format email address."
+                            if (trimmedEmail.length < 3) {
+                                errorMessage = "Email must be at least 3 characters long."
                                 return@Button
                             }
-                            if (password.length < 4) {
+                            if (trimmedPassword.length < 4) {
                                 errorMessage = "Password must be at least 4 characters long."
                                 return@Button
                             }
                             
                             if (isRegisterMode) {
-                                if (viewModel.isEmailRegistered(email)) {
+                                if (viewModel.isEmailRegistered(trimmedEmail)) {
                                     errorMessage = "This email is already registered. Please sign in instead."
                                 } else {
-                                    viewModel.registerUser(email, password, selectedTier)
-                                    viewModel.login(email, selectedTier)
+                                    viewModel.registerUser(trimmedEmail, trimmedPassword, AccountTier.NORMAL)
+                                    viewModel.login(trimmedEmail, AccountTier.NORMAL)
                                     successMessage = "Account registered and logged in successfully!"
                                     onDismissRequest()
                                 }
                             } else {
-                                val success = viewModel.verifyAndLogin(email, password)
+                                val success = viewModel.verifyAndLogin(trimmedEmail, trimmedPassword)
                                 if (success) {
                                     onDismissRequest()
                                 } else {
@@ -3689,6 +3568,71 @@ fun AccountProfileDialog(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SerialDataView(
+    viewModel: MeterScannerViewModel,
+    theme: BleAppTheme
+) {
+    val serialLogs by viewModel.serialLogs.collectAsState()
+    val selectedMeter by viewModel.selectedMeterDetail.collectAsState()
+    val rssiHistory = selectedMeter?.rssiHistory ?: emptyList()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        // RSSI Chart (Canvas)
+        Text("SIGNAL STRENGTH (RSSI)", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = theme.textSecondary)
+        Spacer(modifier = Modifier.height(4.dp))
+        Canvas(modifier = Modifier.fillMaxWidth().height(100.dp).background(theme.cardBg, RoundedCornerShape(8.dp)).padding(8.dp)) {
+            if (rssiHistory.isNotEmpty()) {
+                val path = androidx.compose.ui.graphics.Path()
+                val minRssi = -100f
+                val maxRssi = -30f
+                val range = maxRssi - minRssi
+                
+                val points = rssiHistory.takeLast(50)
+                val stepX = size.width / (points.size - 1).coerceAtLeast(1)
+                
+                points.forEachIndexed { index, snapshot ->
+                    val x = index * stepX
+                    val y = size.height - ((snapshot.rssi - minRssi) / range * size.height)
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                
+                drawPath(path, color = theme.primary, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Serial Logs (Text View)
+        Text("SERIAL DATA STREAM", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = theme.textSecondary)
+        Spacer(modifier = Modifier.height(4.dp))
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black, RoundedCornerShape(8.dp))
+                .padding(8.dp)
+        ) {
+            items(serialLogs.takeLast(50)) { log ->
+                Text(
+                    text = "[${log.timestamp}] ${log.direction}: ${log.text}",
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = when (log.direction) {
+                        "RX" -> Color(0xFF4ADE80)
+                        "TX" -> Color(0xFF60A5FA)
+                        "ERROR" -> Color(0xFFF87171)
+                        else -> Color.White
+                    }
+                )
             }
         }
     }
