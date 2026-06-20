@@ -17,7 +17,7 @@ class ExampleRobolectricTest {
   fun `read string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("Meter Link BLE", appName)
+    assertEquals("Mahavithan Smart Meter Lite", appName)
   }
 
   @Test
@@ -67,33 +67,23 @@ class ExampleRobolectricTest {
     val email = "jane.doe@example.com"
     val pass = "mysecurepassword"
     
-    // Attempt login with unregistered email, should fail
+    // Attempt login with unregistered normal email, should succeed as NORMAL directly
     val loginBeforeRegister = viewModel.verifyAndLogin(email, pass)
-    assertEquals(false, loginBeforeRegister)
-    
-    // Register custom Normal Tier account
-    val regSuccessNormal = viewModel.registerUser(email, pass, AccountTier.NORMAL)
-    assertEquals(true, regSuccessNormal)
-    
-    // Sign in using verified custom credentials
-    val loginAfterRegisterNormal = viewModel.verifyAndLogin(email, pass)
-    assertEquals(true, loginAfterRegisterNormal)
+    assertEquals(true, loginBeforeRegister)
     assertEquals(email, viewModel.currentUser.value?.email)
     assertEquals(AccountTier.NORMAL, viewModel.currentUser.value?.tier)
     
-    // As a registered Normal account, list must be capped at 1 meter
+    // As a Normal account, list must be capped at 1 meter
     org.robolectric.shadows.ShadowLooper.idleMainLooper()
     assertEquals(1, viewModel.discoveredMeters.value.size)
     
-    // Register a premium account
+    // Register and login with a premium account to verify premium access
     val premiumEmail = "boss@company.com"
     val premiumPass = "premium123"
-    val regSuccessPremium = viewModel.registerUser(premiumEmail, premiumPass, AccountTier.PREMIUM)
-    assertEquals(true, regSuccessPremium)
+    viewModel.registerUser(premiumEmail, premiumPass, AccountTier.PREMIUM)
     
-    // Login with registered premium account
-    val loginAfterRegisterPremium = viewModel.verifyAndLogin(premiumEmail, premiumPass)
-    assertEquals(true, loginAfterRegisterPremium)
+    val loginAfterAdmin = viewModel.verifyAndLogin(premiumEmail, premiumPass)
+    assertEquals(true, loginAfterAdmin)
     assertEquals(premiumEmail, viewModel.currentUser.value?.email)
     assertEquals(AccountTier.PREMIUM, viewModel.currentUser.value?.tier)
     

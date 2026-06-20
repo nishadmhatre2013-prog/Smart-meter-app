@@ -1,6 +1,9 @@
 package com.example
 
 import android.Manifest
+import androidx.compose.ui.geometry.Size
+import kotlin.random.Random
+import kotlinx.coroutines.delay
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
@@ -180,11 +183,16 @@ fun BleScannerAppContainer(
     
     val selectedMeterDetail by viewModel.selectedMeterDetail.collectAsState()
     var activeTab by remember { mutableStateOf(0) }
+    var lastSelectedAddress by remember { mutableStateOf<String?>(null) }
     
     // Automatically switch tabs once any device card is initiated/connected
-    LaunchedEffect(selectedMeterDetail) {
-        if (selectedMeterDetail != null) {
+    LaunchedEffect(selectedMeterDetail?.address) {
+        val address = selectedMeterDetail?.address
+        if (address != null && address != lastSelectedAddress) {
             activeTab = 1
+            lastSelectedAddress = address
+        } else if (address == null) {
+            lastSelectedAddress = null
         }
     }
 
@@ -313,540 +321,7 @@ fun BleScannerTab(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // High visibility Header Hero Banner
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(115.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(theme.primary.copy(alpha = 0.25f), theme.background),
-                        startY = 0f
-                    )
-                )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "BLE UTILITY SCANNER",
-                        fontSize = 21.sp,
-                        fontWeight = FontWeight.Black,
-                        color = theme.primary,
-                        fontFamily = FontFamily.Monospace,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "Professional BLE Smart Meter Telemetry Scanner",
-                        fontSize = 11.sp,
-                        color = theme.textPrimary.copy(alpha = 0.7f),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                val context = LocalContext.current
-                Button(
-                    onClick = { viewModel.exportDataToCsv(context) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = theme.primary,
-                        contentColor = Color.Black
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                    modifier = Modifier.testTag("export_csv_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Export CSV Data",
-                        tint = Color.Black,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "EXPORT",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-
-        // Account Profile & Plan Status Panel
-        val currentUser by viewModel.currentUser.collectAsState()
-        var showLoginDialog by remember { mutableStateOf(currentUser == null) }
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                .testTag("account_status_card"),
-            colors = CardDefaults.cardColors(
-                containerColor = if (currentUser?.tier == AccountTier.PREMIUM) {
-                    theme.primary.copy(alpha = 0.08f)
-                } else {
-                    theme.cardBg
-                }
-            ),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(
-                width = 1.dp,
-                color = if (currentUser?.tier == AccountTier.PREMIUM) {
-                    theme.primary
-                } else {
-                    theme.border
-                }
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (currentUser?.tier == AccountTier.PREMIUM) {
-                                    theme.primary.copy(alpha = 0.15f)
-                                } else {
-                                    theme.border.copy(alpha = 0.5f)
-                                }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (currentUser?.tier == AccountTier.PREMIUM) Icons.Default.Star else Icons.Default.Person,
-                            contentDescription = "Account Level Indicator",
-                            tint = if (currentUser?.tier == AccountTier.PREMIUM) theme.primary else theme.accent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.width(10.dp))
-                    
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (currentUser?.tier == AccountTier.PREMIUM) "PREMIUM ENTERPRISE" else "GUEST / NORMAL TIER",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (currentUser?.tier == AccountTier.PREMIUM) theme.primary else theme.textPrimary,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            
-                            Spacer(modifier = Modifier.width(6.dp))
-                            
-                            // Active status dot
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(if (currentUser?.tier == AccountTier.PREMIUM) theme.primary else Color(0xFFF97316))
-                            )
-                        }
-                        
-                        Text(
-                            text = if (currentUser?.tier == AccountTier.PREMIUM) {
-                                currentUser?.email ?: "premium@smartmeter.com"
-                            } else {
-                                "Limited to exactly 1 smart meter metrics view"
-                            },
-                            fontSize = 10.sp,
-                            color = theme.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                
-                Button(
-                    onClick = {
-                        if (currentUser?.tier == AccountTier.PREMIUM) {
-                            viewModel.logout()
-                        } else {
-                            showLoginDialog = true
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (currentUser?.tier == AccountTier.PREMIUM) {
-                            theme.cardBg
-                        } else {
-                            theme.accent
-                        },
-                        contentColor = if (currentUser?.tier == AccountTier.PREMIUM) {
-                            theme.textPrimary
-                        } else {
-                            Color.Black
-                        }
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    border = if (currentUser?.tier == AccountTier.PREMIUM) {
-                        BorderStroke(1.dp, theme.border)
-                    } else null,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    modifier = Modifier
-                        .height(30.dp)
-                        .testTag("account_action_button")
-                ) {
-                    Text(
-                        text = if (currentUser?.tier == AccountTier.PREMIUM) "LOG OUT" else "UPGRADE",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-
-        if (showLoginDialog) {
-            AccountProfileDialog(
-                onDismissRequest = { showLoginDialog = false },
-                viewModel = viewModel,
-                theme = theme
-            )
-        }
-
-        AnimatedVisibility(
-            visible = isSimulationMode,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = theme.accent.copy(alpha = 0.15f)
-                ),
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, theme.accent.copy(alpha = 0.4f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "Demo Mode Information",
-                        tint = theme.accent,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Demo Mode is active. Offline simulated smart meters are populated below. Tap them to scan, link/connect, explore proprietary GATT characteristics, and read live data.",
-                        fontSize = 11.sp,
-                        color = theme.textPrimary,
-                        lineHeight = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(
-                        onClick = { viewModel.toggleSimulationMode(false) },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                        modifier = Modifier.height(26.dp)
-                    ) {
-                        Text("EXIT", color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // Bluetooth hardware status card (No antenna scanner references!)
-        val context = LocalContext.current
-        StateControlIndicator(
-            isScanning = isScanning,
-            bluetoothState = bluetoothState,
-            permissionsGranted = permissionsGranted,
-            metersCount = discoveredMeters.size,
-            theme = theme,
-            onGrantClicked = {
-                permissionsLauncher.launch(viewModel.getRequiredPermissionsList().toTypedArray())
-            },
-            onEnableBluetoothClicked = {
-                val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                context.startActivity(intent)
-            }
-        )
-
-        // Configurable Scan Discovery & Filter Options Panel
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            colors = CardDefaults.cardColors(containerColor = theme.cardBg),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, theme.border)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = "DISCOVERY & FILTER OPTIONS",
-                    fontSize = 10.sp,
-                    color = theme.accent,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Show All BLE Advertisements",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = theme.textPrimary
-                        )
-                        Text(
-                            text = if (showAllBleDevices) "Listing all discovered BLE beacons nearby" else "Only listing matching smart utility devices",
-                            fontSize = 10.sp,
-                            color = theme.textSecondary
-                        )
-                    }
-                    Switch(
-                        checked = showAllBleDevices,
-                        onCheckedChange = { viewModel.setShowAllBleDevices(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = theme.accent,
-                            checkedTrackColor = theme.accent.copy(alpha = 0.4f),
-                            uncheckedThumbColor = theme.textSecondary,
-                            uncheckedTrackColor = theme.border
-                        )
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = theme.border.copy(alpha = 0.5f))
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Interactive Demo / Simulation Mode",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = theme.textPrimary
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(theme.accent.copy(alpha = 0.2f))
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "DEMO",
-                                    color = theme.accent,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                        Text(
-                            text = if (isSimulationMode) "Offline simulated telemetry & serial AT generator ACTIVE" else "Requires physical micro-control transceiver",
-                            fontSize = 10.sp,
-                            color = theme.textSecondary
-                        )
-                    }
-                    Switch(
-                        checked = isSimulationMode,
-                        onCheckedChange = { viewModel.toggleSimulationMode(it) },
-                        modifier = Modifier.testTag("demo_simulator_switch"),
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = theme.accent,
-                            checkedTrackColor = theme.accent.copy(alpha = 0.4f),
-                            uncheckedThumbColor = theme.textSecondary,
-                            uncheckedTrackColor = theme.border
-                        )
-                    )
-                }
-
-                if (!showAllBleDevices) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Device Name Prefix Filter",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = theme.textSecondary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = scanFilterPrefix,
-                        onValueChange = { viewModel.setScanFilterPrefix(it) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = theme.textPrimary),
-                        placeholder = { Text("e.g. M22615, Fitbit, Polar", fontSize = 13.sp, color = theme.textSecondary) },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = theme.accent,
-                            unfocusedBorderColor = theme.border,
-                            focusedContainerColor = theme.background,
-                            unfocusedContainerColor = theme.background
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Real-time hardware scanner will only ask/look for BLE advert names beginning with this code.",
-                        fontSize = 9.sp,
-                        color = theme.textSecondary.copy(alpha = 0.8f)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Recently Viewed Row implementation
-        val recentlyViewedRaw by viewModel.recentlyViewedMeters.collectAsState()
-        val recentlyViewed = remember(recentlyViewedRaw, discoveredMeters) {
-            recentlyViewedRaw.map { recent ->
-                discoveredMeters.find { it.address == recent.address } ?: recent
-            }
-        }
-
-        AnimatedVisibility(
-            visible = recentlyViewed.isNotEmpty(),
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "RECENTLY VIEWED METERS",
-                        color = theme.accent,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    TextButton(
-                        onClick = { viewModel.clearRecentlyViewed() },
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                        modifier = Modifier.height(24.dp)
-                    ) {
-                        Text(
-                            text = "CLEAR ALL",
-                            color = theme.textSecondary,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(6.dp))
-                
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth().testTag("recently_viewed_row"),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(recentlyViewed, key = { it.address }) { item ->
-                        RecentMeterChip(
-                            meter = item,
-                            theme = theme,
-                            onClick = {
-                                activeOverlayDeviceAddress = item.address
-                                viewModel.addToRecentlyViewed(item)
-                            }
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-        }
-
-        // Label matches
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (showAllBleDevices) "FILTER MATCHES (ALL BEACONS)" else "FILTER MATCHES (CODE: ${scanFilterPrefix.uppercase()}*)",
-                color = theme.textSecondary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (isScanning) theme.accent else theme.textSecondary)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = if (isScanning) "SCANNING ACTIVE" else "IDLE",
-                    color = if (isScanning) theme.accent else theme.textSecondary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-
-        if (isScanning) {
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(1.5.dp)),
-                color = theme.accent,
-                trackColor = theme.cardBg
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (showAllBleDevices) "Continuous Bluetooth scan in progress... Showing all beacons." else "Continuous Bluetooth scan in progress... Filtering nearby ${scanFilterPrefix} meters.",
-                color = theme.accent,
-                fontSize = 11.sp,
-                lineHeight = 15.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
-
-        // Discovered lists
+    Box(modifier = Modifier.fillMaxSize().testTag("meters_list_root")) {
         PullToRefreshBox(
             isRefreshing = isPullRefreshing,
             onRefresh = {
@@ -859,100 +334,646 @@ fun BleScannerTab(
                     isPullRefreshing = false
                 }
             },
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+            modifier = Modifier.fillMaxSize()
         ) {
-            if (discoveredMeters.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("meters_list"),
+                contentPadding = PaddingValues(top = 0.dp, bottom = 100.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Item 1: High visibility Header Hero Banner
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(115.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(theme.primary.copy(alpha = 0.25f), theme.background),
+                                    startY = 0f
+                                )
+                            )
                     ) {
-                        Canvas(modifier = Modifier.size(64.dp)) {
-                            drawCircle(color = theme.border, radius = size.minDimension / 2, style = Stroke(width = 4f))
-                            drawCircle(color = theme.accent.copy(alpha = 0.4f), radius = size.minDimension / 3)
-                            drawLine(
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "BLE UTILITY SCANNER",
+                                    fontSize = 21.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = theme.primary,
+                                    fontFamily = FontFamily.Monospace,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = "Professional BLE Smart Meter Telemetry Scanner",
+                                    fontSize = 11.sp,
+                                    color = theme.textPrimary.copy(alpha = 0.7f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            val context = LocalContext.current
+                            Button(
+                                onClick = { viewModel.exportDataToCsv(context) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = theme.primary,
+                                    contentColor = Color.Black
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                                modifier = Modifier.testTag("export_csv_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Export CSV Data",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "EXPORT",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Item 2: Account Profile & Plan Status Panel
+                item {
+                    val currentUser by viewModel.currentUser.collectAsState()
+                    var showLoginDialog by remember { mutableStateOf(currentUser == null) }
+                    
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .testTag("account_status_card"),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (currentUser?.tier == AccountTier.PREMIUM) {
+                                theme.primary.copy(alpha = 0.08f)
+                            } else {
+                                theme.cardBg
+                            }
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (currentUser?.tier == AccountTier.PREMIUM) {
+                                theme.primary
+                            } else {
+                                theme.border
+                            }
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (currentUser?.tier == AccountTier.PREMIUM) {
+                                                theme.primary.copy(alpha = 0.15f)
+                                            } else {
+                                                theme.border.copy(alpha = 0.5f)
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (currentUser?.tier == AccountTier.PREMIUM) Icons.Default.Star else Icons.Default.Person,
+                                        contentDescription = "Account Level Indicator",
+                                        tint = if (currentUser?.tier == AccountTier.PREMIUM) theme.primary else theme.accent,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.width(10.dp))
+                                
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = if (currentUser?.tier == AccountTier.PREMIUM) "PREMIUM ENTERPRISE" else "GUEST / NORMAL TIER",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (currentUser?.tier == AccountTier.PREMIUM) theme.primary else theme.textPrimary,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(if (currentUser?.tier == AccountTier.PREMIUM) theme.primary else Color(0xFFF97316))
+                                        )
+                                    }
+                                    
+                                    Text(
+                                        text = if (currentUser?.tier == AccountTier.PREMIUM) {
+                                            currentUser?.email ?: "admin@system"
+                                        } else {
+                                            "Limited to exactly 1 smart meter metrics view"
+                                        },
+                                        fontSize = 10.sp,
+                                        color = theme.textSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    if (currentUser?.tier == AccountTier.PREMIUM) {
+                                        viewModel.logout()
+                                    } else {
+                                        showLoginDialog = true
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (currentUser?.tier == AccountTier.PREMIUM) {
+                                        theme.cardBg
+                                    } else {
+                                        theme.accent
+                                    },
+                                    contentColor = if (currentUser?.tier == AccountTier.PREMIUM) {
+                                        theme.textPrimary
+                                    } else {
+                                        Color.Black
+                                    }
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                border = if (currentUser?.tier == AccountTier.PREMIUM) {
+                                    BorderStroke(1.dp, theme.border)
+                                } else null,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier
+                                    .height(30.dp)
+                                    .testTag("account_action_button")
+                            ) {
+                                Text(
+                                    text = if (currentUser?.tier == AccountTier.PREMIUM) "LOG OUT" else "UPGRADE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+
+                    if (showLoginDialog) {
+                        AccountProfileDialog(
+                            onDismissRequest = { showLoginDialog = false },
+                            viewModel = viewModel,
+                            theme = theme
+                        )
+                    }
+                }
+
+                // Item 3: Demo Mode Mode Switch Warning Panel
+                item {
+                    AnimatedVisibility(
+                        visible = isSimulationMode,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = theme.accent.copy(alpha = 0.15f)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, theme.accent.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = "Demo Mode Information",
+                                    tint = theme.accent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Demo Mode is active. Offline simulated smart meters are populated below. Tap them to scan, link/connect, explore proprietary GATT characteristics, and read live data.",
+                                    fontSize = 11.sp,
+                                    color = theme.textPrimary,
+                                    lineHeight = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = { viewModel.toggleSimulationMode(false) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(26.dp)
+                                ) {
+                                    Text("EXIT", color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Item 4: Bluetooth hardware status card
+                item {
+                    val context = LocalContext.current
+                    StateControlIndicator(
+                        isScanning = isScanning,
+                        bluetoothState = bluetoothState,
+                        permissionsGranted = permissionsGranted,
+                        metersCount = discoveredMeters.size,
+                        theme = theme,
+                        onGrantClicked = {
+                            permissionsLauncher.launch(viewModel.getRequiredPermissionsList().toTypedArray())
+                        },
+                        onEnableBluetoothClicked = {
+                            val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                            context.startActivity(intent)
+                        }
+                    )
+                }
+
+                // Item 5: Configurable Scan Discovery & Filter Options Panel
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = theme.cardBg),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, theme.border)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "DISCOVERY & FILTER OPTIONS",
+                                fontSize = 10.sp,
                                 color = theme.accent,
-                                start = Offset(size.width * 0.3f, size.height * 0.5f),
-                                end = Offset(size.width * 0.7f, size.height * 0.5f),
-                                strokeWidth = 6f,
-                                cap = StrokeCap.Round
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Show All BLE Advertisements",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = theme.textPrimary
+                                    )
+                                    Text(
+                                        text = if (showAllBleDevices) "Listing all discovered BLE beacons nearby" else "Only listing matching smart utility devices",
+                                        fontSize = 10.sp,
+                                        color = theme.textSecondary
+                                    )
+                                }
+                                Switch(
+                                    checked = showAllBleDevices,
+                                    onCheckedChange = { viewModel.setShowAllBleDevices(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = theme.accent,
+                                        checkedTrackColor = theme.accent.copy(alpha = 0.4f),
+                                        uncheckedThumbColor = theme.textSecondary,
+                                        uncheckedTrackColor = theme.border
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = theme.border.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Interactive Demo / Simulation Mode",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = theme.textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(theme.accent.copy(alpha = 0.2f))
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "DEMO",
+                                                color = theme.accent,
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = if (isSimulationMode) "Offline simulated telemetry & serial AT generator ACTIVE" else "Requires physical micro-control transceiver",
+                                        fontSize = 10.sp,
+                                        color = theme.textSecondary
+                                    )
+                                }
+                                Switch(
+                                    checked = isSimulationMode,
+                                    onCheckedChange = { viewModel.toggleSimulationMode(it) },
+                                    modifier = Modifier.testTag("demo_simulator_switch"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = theme.accent,
+                                        checkedTrackColor = theme.accent.copy(alpha = 0.4f),
+                                        uncheckedThumbColor = theme.textSecondary,
+                                        uncheckedTrackColor = theme.border
+                                    )
+                                )
+                            }
+
+                            if (!showAllBleDevices) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Device Name Prefix Filter",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = theme.textSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = scanFilterPrefix,
+                                    onValueChange = { viewModel.setScanFilterPrefix(it) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(50.dp),
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = theme.textPrimary),
+                                    placeholder = { Text("e.g. M22615, Fitbit, Polar", fontSize = 13.sp, color = theme.textSecondary) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = theme.accent,
+                                        unfocusedBorderColor = theme.border,
+                                        focusedContainerColor = theme.background,
+                                        unfocusedContainerColor = theme.background
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Real-time hardware scanner will only ask/look for BLE advert names beginning with this code.",
+                                    fontSize = 9.sp,
+                                    color = theme.textSecondary.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Item 6: Recently Viewed Row implementation
+                item {
+                    val recentlyViewedRaw by viewModel.recentlyViewedMeters.collectAsState()
+                    val recentlyViewed = remember(recentlyViewedRaw, discoveredMeters) {
+                        recentlyViewedRaw.map { recent ->
+                            discoveredMeters.find { it.address == recent.address } ?: recent
+                        }
+                    }
+                    
+                    AnimatedVisibility(
+                        visible = recentlyViewed.isNotEmpty(),
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "RECENTLY VIEWED METERS",
+                                    color = theme.accent,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                TextButton(
+                                    onClick = { viewModel.clearRecentlyViewed() },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Text(
+                                        text = "CLEAR ALL",
+                                        color = theme.textSecondary,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(6.dp))
+                            
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth().testTag("recently_viewed_row"),
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(recentlyViewed, key = { it.address }) { item ->
+                                    RecentMeterChip(
+                                        meter = item,
+                                        theme = theme,
+                                        onClick = {
+                                            activeOverlayDeviceAddress = item.address
+                                            viewModel.addToRecentlyViewed(item)
+                                        }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
+                }
+
+                // Item 7: Label matches & active lines
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (showAllBleDevices) "FILTER MATCHES (ALL BEACONS)" else "FILTER MATCHES (CODE: ${scanFilterPrefix.uppercase()}*)",
+                            color = theme.textSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isScanning) theme.accent else theme.textSecondary)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isScanning) "SCANNING ACTIVE" else "IDLE",
+                                color = if (isScanning) theme.accent else theme.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
                             )
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No Smart Meters Found",
-                            color = theme.textPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
+                    }
+
+                    if (isScanning) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp)),
+                            color = theme.accent,
+                            trackColor = theme.cardBg
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Ensure BLE is active and M22615 meters operate nearby.",
-                            color = theme.textSecondary,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 18.sp
+                            text = if (showAllBleDevices) "Continuous Bluetooth scan in progress... Showing all beacons." else "Continuous Bluetooth scan in progress... Filtering nearby ${scanFilterPrefix} meters.",
+                            color = theme.accent,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }
                 }
-            } else if (filteredMeters.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search icon with zero results",
-                            tint = theme.accent,
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No Match Found",
-                            color = theme.textPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "No metrics or addresses match \"$searchQuery\". Try another spelling, numbers, or clear search.",
-                            color = theme.textSecondary,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 18.sp
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Button(
-                            onClick = { searchQuery = "" },
-                            colors = ButtonDefaults.buttonColors(containerColor = theme.accent),
-                            shape = RoundedCornerShape(8.dp)
+
+                // Item 8: Dynamic Results List
+                if (discoveredMeters.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(250.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("Reset Search", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(24.dp)
+                            ) {
+                                Canvas(modifier = Modifier.size(64.dp)) {
+                                    drawCircle(color = theme.border, radius = size.minDimension / 2, style = Stroke(width = 4f))
+                                    drawCircle(color = theme.accent.copy(alpha = 0.4f), radius = size.minDimension / 3)
+                                    drawLine(
+                                        color = theme.accent,
+                                        start = Offset(size.width * 0.3f, size.height * 0.5f),
+                                        end = Offset(size.width * 0.7f, size.height * 0.5f),
+                                        strokeWidth = 6f,
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "No Smart Meters Found",
+                                    color = theme.textPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Ensure BLE is active and M22615 meters operate nearby.",
+                                    color = theme.textSecondary,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 18.sp
+                                )
+                            }
                         }
                     }
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("meters_list"),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                } else if (filteredMeters.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(250.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search icon with zero results",
+                                    tint = theme.accent,
+                                    modifier = Modifier.size(64.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "No Match Found",
+                                    color = theme.textPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "No metrics or addresses match \"$searchQuery\". Try another spelling, numbers, or clear search.",
+                                    color = theme.textSecondary,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 18.sp
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Button(
+                                    onClick = { searchQuery = "" },
+                                    colors = ButtonDefaults.buttonColors(containerColor = theme.accent),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Reset Search", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                } else {
                     items(filteredMeters, key = { it.address }) { meter ->
                         MeterCard(
                             meter = meter,
@@ -986,6 +1007,7 @@ fun BleScannerTab(
         // Scan Action Floating Button
         Box(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(bottom = 20.dp, start = 16.dp, end = 16.dp),
             contentAlignment = Alignment.Center
@@ -1299,7 +1321,7 @@ fun DeviceDetailsScreen(
     }
 
     val meter = selectedMeterDetail!!
-    var detailsTab by remember { mutableStateOf(0) } // 0 = GATT, 1 = SERIAL CONSOLE
+    var detailsTab by remember { mutableStateOf(0) } // 0 = GATT, 1 = CELLULAR WAN, 2 = SERIAL CONSOLE
     val serialLogs by viewModel.serialLogs.collectAsState()
     
     LazyColumn(
@@ -1522,19 +1544,46 @@ fun DeviceDetailsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "GATT DIAGNOSTICS", 
+                            text = "GATT MAP", 
                             color = if (detailsTab == 0) theme.background else theme.textPrimary, 
-                            fontSize = 11.sp, 
+                            fontSize = 10.sp, 
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
                     }
                     Box(
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(1.1f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (detailsTab == 1) theme.primary else Color.Transparent)
                             .clickable { detailsTab = 1 }
+                            .padding(vertical = 10.dp)
+                            .testTag("wan_subtab"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                tint = if (detailsTab == 1) theme.background else theme.primary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "CELLULAR WAN",
+                                color = if (detailsTab == 1) theme.background else theme.textPrimary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (detailsTab == 2) theme.primary else Color.Transparent)
+                            .clickable { detailsTab = 2 }
                             .padding(vertical = 10.dp)
                             .testTag("serial_subtab"),
                         contentAlignment = Alignment.Center
@@ -1543,14 +1592,14 @@ fun DeviceDetailsScreen(
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = null,
-                                tint = if (detailsTab == 1) theme.background else theme.accent,
-                                modifier = Modifier.size(12.dp)
+                                tint = if (detailsTab == 2) theme.background else theme.accent,
+                                modifier = Modifier.size(11.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
                                 text = "SERIAL CONSOLE",
-                                color = if (detailsTab == 1) theme.background else theme.textPrimary,
-                                fontSize = 11.sp,
+                                color = if (detailsTab == 2) theme.background else theme.textPrimary,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace
                             )
@@ -1560,8 +1609,12 @@ fun DeviceDetailsScreen(
             }
         }
 
-        if (detailsTab == 1) {
+        if (detailsTab == 2) {
             item { SerialDataView(viewModel, theme) }
+        }
+
+        if (detailsTab == 1) {
+            item { CellularWanTelemetryView(meter, theme) }
         }
 
         if (detailsTab == 0) {
@@ -1609,6 +1662,180 @@ fun DeviceDetailsScreen(
                                     tint = theme.secondary
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // Dynamic Energy billing metrics card integrated with User settings
+            item {
+                Spacer(modifier = Modifier.height(14.dp))
+                val tariffRate by viewModel.tariffRate.collectAsState()
+                val fixedCharge by viewModel.fixedCharge.collectAsState()
+                val msedclZone by viewModel.msedclZone.collectAsState()
+                val consumerName by viewModel.consumerName.collectAsState()
+                val consumerNumber by viewModel.consumerNumber.collectAsState()
+
+                val rawEnergyCost = meter.telemetry.cumulativeKwh * tariffRate
+                val totalEstimatedBill = rawEnergyCost + fixedCharge
+
+                Card(
+                    modifier = Modifier.fillMaxWidth().testTag("billing_monitor_card"),
+                    colors = CardDefaults.cardColors(containerColor = theme.cardBg),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, theme.border)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "LIVE MSEDCL BILLING SIMULATOR",
+                                    fontSize = 9.sp,
+                                    color = theme.accent,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "ACTIVE CONSUMER COST MONITOR",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = theme.textPrimary,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Rate Info",
+                                tint = theme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Customer Details Banner
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(theme.background)
+                                .padding(10.dp)
+                                .clip(RoundedCornerShape(6.dp)),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "CONSUMER: ${consumerName.uppercase()}",
+                                    fontSize = 10.sp,
+                                    color = theme.textPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "NO: $consumerNumber",
+                                    fontSize = 9.sp,
+                                    color = theme.textSecondary,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = msedclZone.uppercase(),
+                                    fontSize = 10.sp,
+                                    color = theme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "GRID REGIONAL ZONE",
+                                    fontSize = 8.sp,
+                                    color = theme.textSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Total bill big text
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "ESTIMATED BILLING CYCLIC COST",
+                                    fontSize = 9.sp,
+                                    color = theme.textSecondary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Text(
+                                        text = "₹ %.2f".format(totalEstimatedBill),
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = theme.primary,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "INR",
+                                        fontSize = 11.sp,
+                                        color = theme.textSecondary,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Energy: ₹ %.2f".format(rawEnergyCost),
+                                    fontSize = 11.sp,
+                                    color = theme.textPrimary,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "Fixed fee: ₹ %.2f".format(fixedCharge),
+                                    fontSize = 10.sp,
+                                    color = theme.textSecondary,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Progress indication of load/tier consumption slab
+                        LinearProgressIndicator(
+                            progress = { ((meter.telemetry.cumulativeKwh / 300.0).coerceIn(0.0, 1.0)).toFloat() },
+                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                            color = theme.primary,
+                            trackColor = theme.border.copy(alpha = 0.5f)
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Current Rate: ₹%.2f / kWh".format(tariffRate),
+                                fontSize = 9.sp,
+                                color = theme.textSecondary,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Limit slab: %.1f / 300 kWh".format(meter.telemetry.cumulativeKwh),
+                                fontSize = 9.sp,
+                                color = theme.textSecondary,
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
                     }
                 }
@@ -1882,13 +2109,257 @@ fun ThemeSettingsTab(
 ) {
     val currentThemeIndex by viewModel.currentThemeIndex.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val tariffRate by viewModel.tariffRate.collectAsState()
+    val fixedCharge by viewModel.fixedCharge.collectAsState()
+    val msedclZone by viewModel.msedclZone.collectAsState()
+    val consumerNumber by viewModel.consumerNumber.collectAsState()
+    val consumerName by viewModel.consumerName.collectAsState()
+    val rssiThreshold by viewModel.rssiThreshold.collectAsState()
+    val scanPrefix by viewModel.scanFilterPrefix.collectAsState()
+    val showAllBle by viewModel.showAllBleDevices.collectAsState()
+
+    var editProfile by remember { mutableStateOf(false) }
+    var tempName by remember(consumerName) { mutableStateOf(consumerName) }
+    var tempNumber by remember(consumerNumber) { mutableStateOf(consumerNumber) }
+
+    var editTariff by remember { mutableStateOf(false) }
+    var tempTariff by remember(tariffRate) { mutableStateOf(tariffRate.toString()) }
+    var tempFixed by remember(fixedCharge) { mutableStateOf(fixedCharge.toString()) }
+    var tempZone by remember(msedclZone) { mutableStateOf(msedclZone) }
+
+    var tempPrefix by remember(scanPrefix) { mutableStateOf(scanPrefix) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Consumer Profile Card
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("consumer_profile_settings_card"),
+            colors = CardDefaults.cardColors(containerColor = theme.cardBg),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, theme.border)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "MSEDCL CONSUMER PROFILE",
+                        fontSize = 10.sp,
+                        color = theme.accent,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    
+                    Text(
+                        text = if (editProfile) "CANCEL" else "EDIT PROFILE",
+                        fontSize = 10.sp,
+                        color = theme.primary,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .clickable {
+                                if (editProfile) {
+                                    tempName = consumerName
+                                    tempNumber = consumerNumber
+                                }
+                                editProfile = !editProfile
+                            }
+                            .padding(4.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (editProfile) {
+                    OutlinedTextField(
+                        value = tempName,
+                        onValueChange = { tempName = it },
+                        label = { Text("Consumer Name", color = theme.textSecondary, fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_consumer_name_input"),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary,
+                            focusedBorderColor = theme.primary,
+                            unfocusedBorderColor = theme.border
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tempNumber,
+                        onValueChange = { tempNumber = it },
+                        label = { Text("MSEDCL Connection Number", color = theme.textSecondary, fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_consumer_number_input"),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary,
+                            focusedBorderColor = theme.primary,
+                            unfocusedBorderColor = theme.border
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        modifier = Modifier.fillMaxWidth().testTag("save_profile_button"),
+                        onClick = {
+                            viewModel.updateConsumerProfile(tempNumber.trim(), tempName.trim())
+                            editProfile = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.primary, contentColor = theme.background)
+                    ) {
+                        Text("SAVE PROFILE CONFIGURATION", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(theme.background)
+                            .padding(12.dp)
+                            .clip(RoundedCornerShape(6.dp)),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("SUBSCRIBER NAME:", fontSize = 10.sp, color = theme.textSecondary)
+                            Text(consumerName, fontSize = 10.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("CONSUMER NUMBER:", fontSize = 10.sp, color = theme.textSecondary)
+                            Text(consumerNumber, fontSize = 10.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Tariff & Rate Config Card
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("tariff_settings_card"),
+            colors = CardDefaults.cardColors(containerColor = theme.cardBg),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, theme.border)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ELECTRICITY TARIFF & SUBSTATION RATES",
+                        fontSize = 10.sp,
+                        color = theme.accent,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    
+                    Text(
+                        text = if (editTariff) "CANCEL" else "CONFIGURE TARIFF",
+                        fontSize = 10.sp,
+                        color = theme.primary,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .clickable {
+                                if (editTariff) {
+                                    tempTariff = tariffRate.toString()
+                                    tempFixed = fixedCharge.toString()
+                                    tempZone = msedclZone
+                                }
+                                editTariff = !editTariff
+                            }
+                            .padding(4.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (editTariff) {
+                    OutlinedTextField(
+                        value = tempTariff,
+                        onValueChange = { tempTariff = it },
+                        label = { Text("Energy unit cost (₹ / kWh)", color = theme.textSecondary, fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_tariff_rate_input"),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary,
+                            focusedBorderColor = theme.primary,
+                            unfocusedBorderColor = theme.border
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tempFixed,
+                        onValueChange = { tempFixed = it },
+                        label = { Text("Monthly Customer Contract Charge (₹)", color = theme.textSecondary, fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_fixed_charge_input"),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary,
+                            focusedBorderColor = theme.primary,
+                            unfocusedBorderColor = theme.border
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tempZone,
+                        onValueChange = { tempZone = it },
+                        label = { Text("MSEDCL Grid Region / Circle", color = theme.textSecondary, fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_msedcl_zone_input"),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary,
+                            focusedBorderColor = theme.primary,
+                            unfocusedBorderColor = theme.border
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        modifier = Modifier.fillMaxWidth().testTag("save_tariff_button"),
+                        onClick = {
+                            val rVal = tempTariff.toFloatOrNull() ?: tariffRate
+                            val fVal = tempFixed.toFloatOrNull() ?: fixedCharge
+                            viewModel.updateTariffSettings(rVal, fVal, tempZone.trim())
+                            editTariff = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.primary, contentColor = theme.background)
+                    ) {
+                        Text("SAVE BILLING RATES SPEC", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(theme.background)
+                            .padding(12.dp)
+                            .clip(RoundedCornerShape(6.dp)),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("TARIFF (₹/kWh MODULE):", fontSize = 10.sp, color = theme.textSecondary)
+                            Text("₹ %.2f / Unit".format(tariffRate), fontSize = 10.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("MONTHLY FEE (FIXED CONTRACT):", fontSize = 10.sp, color = theme.textSecondary)
+                            Text("₹ %.2f".format(fixedCharge), fontSize = 10.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("GRID SECTOR ZONE CIRCLE:", fontSize = 10.sp, color = theme.textSecondary)
+                            Text(msedclZone, fontSize = 10.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Theme Style Selection Card
         Card(
             modifier = Modifier.fillMaxWidth().testTag("theme_preset_card"),
             colors = CardDefaults.cardColors(containerColor = theme.cardBg),
@@ -3223,7 +3694,7 @@ fun AccountProfileDialog(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "ACCOUNT UTILITY CENTER",
+                        text = if (isRegisterMode) "CREATE NEW ACCOUNT" else "ACCOUNT UTILITY CENTER",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
                         color = theme.textPrimary,
@@ -3233,197 +3704,25 @@ fun AccountProfileDialog(
                 
                 Spacer(modifier = Modifier.height(14.dp))
                 
-                // Mode Selector Tabs (Sign In vs Create Account)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(theme.border.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                        .padding(4.dp)
-                ) {
-                    // Sign In Tab Button
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (!isRegisterMode) theme.cardBg else Color.Transparent)
-                            .clickable {
-                                isRegisterMode = false
-                                errorMessage = null
-                                successMessage = null
-                            }
-                            .padding(vertical = 8.dp)
-                            .testTag("tab_sign_in"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "SIGN IN",
-                            color = if (!isRegisterMode) theme.textPrimary else theme.textSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    
-                    // Create Account Tab Button
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isRegisterMode) theme.cardBg else Color.Transparent)
-                            .clickable {
-                                isRegisterMode = true
-                                errorMessage = null
-                                successMessage = null
-                            }
-                            .padding(vertical = 8.dp)
-                            .testTag("tab_register"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "CREATE ACCOUNT",
-                            color = if (isRegisterMode) theme.textPrimary else theme.textSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
+                // Description Based on Mode
+                Text(
+                    text = if (isRegisterMode) {
+                        "Create a new local operator account to track reading cycles, manage diagnostics, and access live local telemetry fields."
+                    } else {
+                        "Sign in to your utility account to sync smart meter diagnostics, track reading cycles, and manage live telemetry metrics from the console."
+                    },
+                    fontSize = 11.sp,
+                    color = theme.textSecondary,
+                    textAlign = TextAlign.Start,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 
                 Spacer(modifier = Modifier.height(14.dp))
                 
-                if (!isRegisterMode) {
-                    // --- SIGN IN MODE ---
-                    Text(
-                        text = "Sign in with your registered account, or use 1-tap demo profiles to switch privileges instantly.",
-                        fontSize = 11.sp,
-                        color = theme.textSecondary,
-                        textAlign = TextAlign.Start,
-                        lineHeight = 15.sp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    Spacer(modifier = Modifier.height(14.dp))
-                    
-                    // Demo Profiles (Evaluate / Pre-configured accounts)
-                    Text(
-                        text = "1-TAP DEMO PROFILE ACCESS",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = theme.accent,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    
-                    Spacer(modifier = Modifier.height(6.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Normal Demo
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                                .clickable {
-                                    viewModel.login("normal@smartmeter.com", AccountTier.NORMAL)
-                                    onDismissRequest()
-                                }
-                                .testTag("login_normal_demo_btn"),
-                            colors = CardDefaults.cardColors(containerColor = theme.background),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, theme.border)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = "Normal User Profile",
-                                    tint = theme.textSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "NORMAL",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = theme.textPrimary
-                                )
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = theme.border.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                } else {
-                    // --- CREATE ACCOUNT MODE ---
-                    Text(
-                        text = "Everyone can create their own account here. Accounts are locally stored and remembered across app sessions.",
-                        fontSize = 11.sp,
-                        color = theme.textSecondary,
-                        textAlign = TextAlign.Start,
-                        lineHeight = 15.sp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    Spacer(modifier = Modifier.height(14.dp))
-                    
-                    Text(
-                        text = "SELECT PLAN TIER LEVEL",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = theme.accent,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    
-                    Spacer(modifier = Modifier.height(6.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Normal select
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                                .clickable { /* Tier locked to NORMAL */ }
-                                .testTag("select_tier_normal"),
-                            colors = CardDefaults.cardColors(
-                                containerColor = theme.border.copy(alpha = 0.3f)
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(
-                                width = 2.dp,
-                                color = theme.accent
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "NORMAL TIER (Default)",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = theme.accent
-                                )
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = theme.border.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-                
-                // Form Fields
+                // Form Fields Label
                 Text(
-                    text = if (isRegisterMode) "NEW CREDENTIALS" else "ACCOUNT CREDENTIALS",
+                    text = if (isRegisterMode) "REGISTER OPERATOR ACCOUNT" else "ACCOUNT CREDENTIALS",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     color = theme.textSecondary,
@@ -3440,8 +3739,8 @@ fun AccountProfileDialog(
                         errorMessage = null
                         successMessage = null
                     },
-                    label = { Text("Email Address", fontSize = 11.sp) },
-                    placeholder = { Text("e.g. user@domain.com", fontSize = 11.sp) },
+                    label = { Text("Username or Email", fontSize = 11.sp) },
+                    placeholder = { Text("e.g. user@utility.com", fontSize = 11.sp) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = theme.textPrimary,
@@ -3464,8 +3763,8 @@ fun AccountProfileDialog(
                         errorMessage = null
                         successMessage = null
                     },
-                    label = { Text("App Password", fontSize = 11.sp) },
-                    placeholder = { Text("Min. 4 characters", fontSize = 11.sp) },
+                    label = { Text("Password", fontSize = 11.sp) },
+                    placeholder = { Text("••••••••", fontSize = 11.sp) },
                     singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -3509,7 +3808,8 @@ fun AccountProfileDialog(
                 // Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(
                         onClick = onDismissRequest,
@@ -3523,33 +3823,25 @@ fun AccountProfileDialog(
                             val trimmedEmail = email.trim()
                             val trimmedPassword = password.trim()
                             if (trimmedEmail.isBlank() || trimmedPassword.isBlank()) {
-                                errorMessage = "Please complete all Email and Password fields."
-                                return@Button
-                            }
-                            if (trimmedEmail.length < 3) {
-                                errorMessage = "Email must be at least 3 characters long."
-                                return@Button
-                            }
-                            if (trimmedPassword.length < 4) {
-                                errorMessage = "Password must be at least 4 characters long."
+                                errorMessage = "Please complete all fields."
                                 return@Button
                             }
                             
                             if (isRegisterMode) {
-                                if (viewModel.isEmailRegistered(trimmedEmail)) {
-                                    errorMessage = "This email is already registered. Please sign in instead."
+                                val success = viewModel.registerUser(trimmedEmail, trimmedPassword, AccountTier.NORMAL)
+                                if (success) {
+                                    errorMessage = null
+                                    successMessage = "Account registered! Now please sign in."
+                                    isRegisterMode = false
                                 } else {
-                                    viewModel.registerUser(trimmedEmail, trimmedPassword, AccountTier.NORMAL)
-                                    viewModel.login(trimmedEmail, AccountTier.NORMAL)
-                                    successMessage = "Account registered and logged in successfully!"
-                                    onDismissRequest()
+                                    errorMessage = "Failed to register account."
                                 }
                             } else {
                                 val success = viewModel.verifyAndLogin(trimmedEmail, trimmedPassword)
                                 if (success) {
                                     onDismissRequest()
                                 } else {
-                                    errorMessage = "Invalid credentials. Please verify or register a new profile."
+                                    errorMessage = "Failed to authenticate."
                                 }
                             }
                         },
@@ -3561,12 +3853,40 @@ fun AccountProfileDialog(
                         modifier = Modifier.testTag("auth_submit_button")
                     ) {
                         Text(
-                            text = if (isRegisterMode) "CREATE ACCOUNT" else "SIGN IN",
+                            text = if (isRegisterMode) "REGISTER" else "SIGN IN",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+                
+                // Mode Toggle Footer
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isRegisterMode) "Already have an account? " else "Don't have an account? ",
+                        fontSize = 11.sp,
+                        color = theme.textSecondary
+                    )
+                    Text(
+                        text = if (isRegisterMode) "SIGN IN" else "CREATE ACCOUNT",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = theme.accent,
+                        modifier = Modifier
+                            .clickable {
+                                isRegisterMode = !isRegisterMode
+                                errorMessage = null
+                                successMessage = null
+                            }
+                            .testTag("toggle_register_mode_button")
+                    )
                 }
             }
         }
@@ -3615,13 +3935,24 @@ fun SerialDataView(
         // Serial Logs (Text View)
         Text("SERIAL DATA STREAM", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = theme.textSecondary)
         Spacer(modifier = Modifier.height(4.dp))
-        androidx.compose.foundation.lazy.LazyColumn(
+        
+        val consoleScrollState = rememberScrollState()
+        
+        LaunchedEffect(serialLogs.size) {
+            if (serialLogs.isNotEmpty()) {
+                consoleScrollState.scrollTo(consoleScrollState.maxValue)
+            }
+        }
+
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(245.dp)
                 .background(Color.Black, RoundedCornerShape(8.dp))
+                .verticalScroll(consoleScrollState)
                 .padding(8.dp)
         ) {
-            items(serialLogs.takeLast(50)) { log ->
+            serialLogs.takeLast(50).forEach { log ->
                 Text(
                     text = "[${log.timestamp}] ${log.direction}: ${log.text}",
                     fontSize = 9.sp,
@@ -3637,3 +3968,478 @@ fun SerialDataView(
         }
     }
 }
+
+@Composable
+fun CellularWanTelemetryView(
+    meter: BleMeter,
+    theme: BleAppTheme
+) {
+    val wan = meter.wanTelemetry
+    var pingStatus by remember { mutableStateOf<String?>(null) }
+    var isPinging by remember { mutableStateOf(false) }
+    var selectedBandOverride by remember { mutableStateOf(wan.cellularBand) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = theme.cardBg),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, theme.border)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "HARDWARE INTEGRATION",
+                        fontSize = 9.sp,
+                        color = theme.accent,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "HPL CELLULAR WAN-MODULE",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = theme.textPrimary,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                
+                // Pulsing Red/Green connection indicator mimicking the real LED labeled "RX/TX N/W"
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(theme.background)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(if (wan.rxTxLedState) theme.primary else theme.accent.copy(alpha = 0.3f))
+                    )
+                    Text(
+                        text = if (wan.rxTxLedState) "RX/TX ACT" else "RX/TX IDLE",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (wan.rxTxLedState) theme.primary else theme.textSecondary,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(14.dp))
+            
+            // Custom Barcode Drawing for physical scanning aesthetics
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.background)
+                    .padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(35.dp)
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    val seed = meter.address.replace(":", "").toLongOrNull(16) ?: 9999L
+                    val rand = Random(seed)
+                    
+                    var currentX = 0f
+                    while (currentX < width) {
+                        val wVal = rand.nextInt(12) + 2
+                        val gVal = rand.nextInt(8) + 1
+                        val barWidth = wVal.toFloat()
+                        
+                        drawRect(
+                            color = theme.textPrimary.copy(alpha = 0.85f),
+                            topLeft = Offset(currentX, 0f),
+                            size = Size(barWidth, height)
+                        )
+                        currentX += (wVal + gVal).toFloat()
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "*IMEI: ${wan.imei}*",
+                    fontSize = 11.sp,
+                    color = theme.textPrimary,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 1.sp
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Technical specs grid
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Spec 1
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = theme.background),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, theme.border.copy(alpha = 0.6f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("MGA MARK / PROPERTY", fontSize = 8.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("MSEDCL (MSEB)", fontSize = 11.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+                // Spec 2
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = theme.background),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, theme.border.copy(alpha = 0.6f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("LOA CONTRACT DATE", fontSize = 8.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(wan.loaDate, fontSize = 11.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Spec 3
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = theme.background),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, theme.border.copy(alpha = 0.6f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("MODULE WARRANTY", fontSize = 8.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(wan.warrantyPeriod, fontSize = 11.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+                // Spec 4
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = theme.background),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, theme.border.copy(alpha = 0.6f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("HARDWARE LOA REG", fontSize = 8.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(wan.loaNumber.takeLast(10), fontSize = 11.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        }
+    }
+    
+    Spacer(modifier = Modifier.height(14.dp))
+    
+    // Live Signal strength telemetry
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = theme.cardBg),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, theme.border)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "WAN SIGNAL & CARRIER DETAILS",
+                fontSize = 9.sp,
+                color = theme.accent,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            
+            // Connected Network signal level bar view
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(theme.background)
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Draw Signal bar bars
+                Row(
+                    modifier = Modifier.width(50.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    val activeBars = when {
+                        wan.signalStrengthDbm >= -65 -> 5
+                        wan.signalStrengthDbm >= -75 -> 4
+                        wan.signalStrengthDbm >= -85 -> 3
+                        wan.signalStrengthDbm >= -95 -> 2
+                        wan.signalStrengthDbm >= -105 -> 1
+                        else -> 0
+                    }
+                    val barColor = when {
+                        wan.signalStrengthDbm >= -75 -> theme.primary
+                        wan.signalStrengthDbm >= -90 -> Color(0xFFF59E0B)
+                        else -> Color(0xFFEF4444)
+                    }
+                    
+                    for (barIdx in 1..5) {
+                        val barHeight = (barIdx * 4).dp
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(barHeight)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(if (barIdx <= activeBars) barColor else theme.textSecondary.copy(alpha = 0.2f))
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${wan.signalStrengthDbm} dBm",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.textPrimary,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(theme.primary.copy(alpha = 0.15f))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = when {
+                                    wan.signalStrengthDbm >= -75 -> "EXCELLENT"
+                                    wan.signalStrengthDbm >= -88 -> "STABLE"
+                                    wan.signalStrengthDbm >= -100 -> "MARGINAL"
+                                    else -> "CRITICAL"
+                                },
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                color = theme.primary,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Carrier network negotiated at cellular node.",
+                        fontSize = 11.sp,
+                        color = theme.textSecondary
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(14.dp))
+            
+            // Grid of parameters
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DetailParamCard(Modifier.weight(1f), "CELLULAR STATUS", "CONNECTED", theme, Color(0xFF10B981))
+                    DetailParamCard(Modifier.weight(1f), "CELL CARRIER", wan.activeCarrier, theme)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DetailParamCard(Modifier.weight(1f), "NETWORK TYPE", wan.connectionType, theme)
+                    DetailParamCard(Modifier.weight(1f), "CELL ID / LAC", "${wan.cellId} / ${wan.lac}", theme)
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(14.dp))
+            
+            // Band selector simulation
+            Text(
+                text = "NEGOTIATED FREQUENCY CONTROL",
+                fontSize = 9.sp,
+                color = theme.textSecondary,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.background, RoundedCornerShape(8.dp))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val bandsSupported = listOf("850MHz", "900MHz", "1800MHz", "2300MHz", "2500MHz")
+                bandsSupported.forEach { bandLabel ->
+                    val isSelected = selectedBandOverride.contains(bandLabel)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (isSelected) theme.primary else Color.Transparent
+                            )
+                            .clickable {
+                                selectedBandOverride = "LTE Band Override ($bandLabel)"
+                            }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = bandLabel,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) theme.background else theme.textPrimary,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    Spacer(modifier = Modifier.height(14.dp))
+    
+    // Transmission Test Panel
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = theme.cardBg),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, theme.border)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "UTILITY PING & LATENCY DIAGNOSTICS",
+                fontSize = 9.sp,
+                color = theme.accent,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Perform an end-to-end transceiver check to MSEDCL gateway server system to evaluate WAN packet loss.",
+                fontSize = 11.sp,
+                color = theme.textSecondary,
+                lineHeight = 15.sp
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Button(
+                modifier = Modifier.fillMaxWidth().testTag("ping_gateway_button"),
+                onClick = {
+                    coroutineScope.launch {
+                        isPinging = true
+                        pingStatus = "SENDING PING ECHO PACKETS..."
+                        delay(1200)
+                        val success = Random.nextDouble() > 0.1
+                        if (success) {
+                            val rtt = Random.nextInt(120, 260)
+                            pingStatus = "CONG REG SUCCESS: Node IP=10.124.52.19, RTT=${rtt}ms, Loss=0%"
+                        } else {
+                            pingStatus = "TRANSMIT TIMEOUT: Gateway route congested, retrying..."
+                        }
+                        isPinging = false
+                    }
+                },
+                enabled = !isPinging,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = theme.primary,
+                    contentColor = theme.background
+                )
+            ) {
+                if (isPinging) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = theme.background,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("TRANSMITTING...", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Ping", modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("TEST MSEDCL CENTRAL SERVER CONN", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            
+            if (pingStatus != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(theme.background)
+                        .border(1.dp, theme.border.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isFail = pingStatus!!.contains("TIMEOUT")
+                    Icon(
+                        imageVector = if (isFail) Icons.Default.Warning else Icons.Default.Check,
+                        contentDescription = "Status",
+                        tint = if (isFail) Color(0xFFEF4444) else theme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = pingStatus!!,
+                        fontSize = 11.sp,
+                        color = if (isFail) Color(0xFFEF4444) else theme.textPrimary,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Retry",
+                        tint = theme.textSecondary,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable {
+                                pingStatus = null
+                            }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailParamCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    theme: BleAppTheme,
+    valueColor: Color = theme.textPrimary
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = theme.background),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, theme.border.copy(alpha = 0.6f))
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Text(title, fontSize = 8.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(value, fontSize = 11.sp, color = valueColor, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+

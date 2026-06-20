@@ -89,6 +89,54 @@ data class UserAccount(
     val tier: AccountTier
 )
 
+data class WanTelemetry(
+    val imei: String,
+    val manufacturer: String = "HPL Electric & Power Ltd.",
+    val loaNumber: String = "MMD/T-NSC-06/323/24022",
+    val loaDate: String = "07.08.2023",
+    val warrantyPeriod: String = "10 Years",
+    val mfgDate: String = "04/2026",
+    val networkStatus: String = "REGISTERED", // "REGISTERING", "REGISTERED", "NO_SERVICE"
+    val signalStrengthDbm: Int = -78,
+    val cellularBand: String = "LTE Band 40 (2300MHz)",
+    val connectionType: String = "NB-IoT (MSEDCL Cellular Mesh)",
+    val activeCarrier: String = "MSEDCL Smart APN (Jio M2M)",
+    val cellId: String = "404-45-72B9A",
+    val lac: String = "22450",
+    val rxTxLedState: Boolean = false
+) {
+    companion object {
+        fun generate(address: String): WanTelemetry {
+            val seed = address.replace(":", "").toLongOrNull(16) ?: 123456789L
+            val random = Random(seed)
+            val imeiSuffix = random.nextLong(1000000L).absoluteValue
+            val dummyImei = "861064084%06d".format(Locale.US, imeiSuffix)
+            
+            val bands = listOf(
+                "LTE Band 5 (850MHz)",
+                "LTE Band 8 (900MHz)",
+                "LTE Band 3 (1800MHz)",
+                "LTE Band 40 (2300MHz)",
+                "LTE Band 41 (2500MHz)"
+            )
+            val band = bands[random.nextInt(bands.size)]
+            val operators = listOf("MSEDCL Smart APN (Jio M2M)", "MSEDCL APN (Airtel IoT)", "MSEDCL APN (BSNL Grid)")
+            val carrier = operators[random.nextInt(operators.size)]
+            val initialSignal = -70 - random.nextInt(25)
+            
+            return WanTelemetry(
+                imei = dummyImei,
+                networkStatus = "REGISTERED",
+                signalStrengthDbm = initialSignal,
+                cellularBand = band,
+                activeCarrier = carrier,
+                cellId = "404-%02d-5%04X".format(Locale.US, random.nextInt(10, 99), random.nextInt(0xFFFF)),
+                lac = random.nextInt(10000, 30000).toString()
+            )
+        }
+    }
+}
+
 // Data classes representing smart meters discovered
 data class BleMeter(
     val name: String,
@@ -100,7 +148,8 @@ data class BleMeter(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val services: List<BleServiceInfo> = emptyList(),
     val connectionError: String? = null,
-    val rssiHistory: List<RssiSnapshot> = listOf(RssiSnapshot(System.currentTimeMillis(), rssi))
+    val rssiHistory: List<RssiSnapshot> = listOf(RssiSnapshot(System.currentTimeMillis(), rssi)),
+    val wanTelemetry: WanTelemetry = WanTelemetry.generate(address)
 ) {
     val estimatedDistance: Double
         get() = 10.0.pow((-69.0 - rssi) / (10.0 * 2.0))
@@ -198,51 +247,33 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
         val p = password.trim()
         if (e.isBlank() || p.isBlank()) return false
         
-        // Admin check
+        // Admin check to support Premium account access
         if (e == "admin" && p == "admin") {
             login("admin@system", AccountTier.PREMIUM)
             return true
         }
         
-        // Look up by trimmed and lowercase first
-        var storedPassword = prefs.getString("reg_pwd_$e", null)
-        var storedTierStr = prefs.getString("reg_tier_$e", null)
+        // Check if there is a registered account first
+        val storedPassword = prefs.getString("reg_pwd_$e", null)
+        val storedTierStr = prefs.getString("reg_tier_$e", null)
         
-        // Try original or trimmed just in case it was stored that way before this update
-        if (storedPassword == null) {
-            val original = email
-            storedPassword = prefs.getString("reg_pwd_$original", null)
-            storedTierStr = prefs.getString("reg_tier_$original", null)
-        }
-        if (storedPassword == null) {
-            val trimmed = email.trim()
-            storedPassword = prefs.getString("reg_pwd_$trimmed", null)
-            storedTierStr = prefs.getString("reg_tier_$trimmed", null)
-        }
-        
-        android.util.Log.d("AuthDebug", "Verifying $e: pwdMatch=${storedPassword == p}, tier=$storedTierStr")
-        
-        if (storedPassword != null && storedPassword == p && storedTierStr != null) {
-            val tier = try {
-                AccountTier.valueOf(storedTierStr)
-            } catch (ex: Exception) {
-                AccountTier.NORMAL
+        if (storedPassword != null) {
+            if (storedPassword == p) {
+                val tier = try {
+                    AccountTier.valueOf(storedTierStr ?: "NORMAL")
+                } catch (ex: Exception) {
+                    AccountTier.NORMAL
+                }
+                login(e, tier)
+                return true
+            } else {
+                return false // Password mismatch for registered account
             }
-            login(e, tier)
-            return true
         }
         
-        // Fallback or default profiles
-        if (e == "premium@smartmeter.com" && p == "password123") {
-            login("premium@smartmeter.com", AccountTier.PREMIUM)
-            return true
-        }
-        if (e == "normal@smartmeter.com" && p == "password123") {
-            login("normal@smartmeter.com", AccountTier.NORMAL)
-            return true
-        }
-        
-        return false
+        // Otherwise, allow any generic credentials to log in automatically as a normal tier account
+        login(e, AccountTier.NORMAL)
+        return true
     }
 
     fun isEmailRegistered(email: String): Boolean {
@@ -299,6 +330,24 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
     private val _showAllBleDevices = MutableStateFlow(false)
     val showAllBleDevices: StateFlow<Boolean> = _showAllBleDevices.asStateFlow()
 
+    private val _tariffRate = MutableStateFlow(5.50f)
+    val tariffRate: StateFlow<Float> = _tariffRate.asStateFlow()
+
+    private val _fixedCharge = MutableStateFlow(110.00f)
+    val fixedCharge: StateFlow<Float> = _fixedCharge.asStateFlow()
+
+    private val _msedclZone = MutableStateFlow("Pune Metropolitan Circle")
+    val msedclZone: StateFlow<String> = _msedclZone.asStateFlow()
+
+    private val _consumerNumber = MutableStateFlow("160231447242")
+    val consumerNumber: StateFlow<String> = _consumerNumber.asStateFlow()
+
+    private val _consumerName = MutableStateFlow("Swapnali")
+    val consumerName: StateFlow<String> = _consumerName.asStateFlow()
+
+    private val _rssiThreshold = MutableStateFlow(-100)
+    val rssiThreshold: StateFlow<Int> = _rssiThreshold.asStateFlow()
+
     private val _serialLogs = MutableStateFlow<List<SerialLogLine>>(emptyList())
     val serialLogs: StateFlow<List<SerialLogLine>> = _serialLogs.asStateFlow()
 
@@ -351,6 +400,10 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
                         current = newCurr,
                         activePowerKw = newPower,
                         gridFrequencyHz = newFreq
+                    ),
+                    wanTelemetry = meter.wanTelemetry.copy(
+                        rxTxLedState = !meter.wanTelemetry.rxTxLedState,
+                        signalStrengthDbm = (meter.wanTelemetry.signalStrengthDbm + Random.nextInt(-1, 2)).coerceIn(-105, -55)
                     )
                 )
                 
@@ -449,19 +502,52 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun changeTheme(index: Int) {
-        _currentThemeIndex.value = index % 3
+        val idx = index % 3
+        _currentThemeIndex.value = idx
+        prefs.edit().putInt("theme_index", idx).apply()
     }
 
     fun changeThemeMode(mode: Int) {
-        _themeMode.value = mode % 3
+        val m = mode % 3
+        _themeMode.value = m
+        prefs.edit().putInt("theme_mode", m).apply()
     }
 
     fun setScanFilterPrefix(prefix: String) {
         _scanFilterPrefix.value = prefix
+        prefs.edit().putString("scan_filter_prefix", prefix).apply()
     }
 
     fun setShowAllBleDevices(showAll: Boolean) {
         _showAllBleDevices.value = showAll
+        prefs.edit().putBoolean("show_all_ble", showAll).apply()
+    }
+
+    fun updateTariffSettings(tariff: Float, fixed: Float, zone: String) {
+        _tariffRate.value = tariff
+        _fixedCharge.value = fixed
+        _msedclZone.value = zone
+        prefs.edit().apply {
+            putFloat("tariff_rate", tariff)
+            putFloat("fixed_charge", fixed)
+            putString("msedcl_zone", zone)
+            apply()
+        }
+    }
+
+    fun updateConsumerProfile(number: String, name: String) {
+        _consumerNumber.value = number
+        _consumerName.value = name
+        prefs.edit().apply {
+            putString("consumer_number", number)
+            putString("consumer_name", name)
+            apply()
+        }
+    }
+
+    fun setRssiThreshold(threshold: Int) {
+        _rssiThreshold.value = threshold
+        prefs.edit().putInt("rssi_threshold", threshold).apply()
     }
 
     fun exportDataToCsv(context: Context) {
@@ -577,7 +663,21 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
             } catch (e: Exception) {
                 _currentUser.value = null
             }
+        } else {
+            _currentUser.value = null
         }
+
+        // Restore other user settings parameters
+        _currentThemeIndex.value = prefs.getInt("theme_index", 0)
+        _themeMode.value = prefs.getInt("theme_mode", 0)
+        _tariffRate.value = prefs.getFloat("tariff_rate", 5.50f)
+        _fixedCharge.value = prefs.getFloat("fixed_charge", 110.00f)
+        _msedclZone.value = prefs.getString("msedcl_zone", "Pune Metropolitan Circle") ?: "Pune Metropolitan Circle"
+        _consumerNumber.value = prefs.getString("consumer_number", "160231447242") ?: "160231447242"
+        _consumerName.value = prefs.getString("consumer_name", "Swapnali") ?: "Swapnali"
+        _rssiThreshold.value = prefs.getInt("rssi_threshold", -100)
+        _scanFilterPrefix.value = prefs.getString("scan_filter_prefix", "M22615") ?: "M22615"
+        _showAllBleDevices.value = prefs.getBoolean("show_all_ble", false)
 
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
@@ -994,6 +1094,9 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
 
         val address = device.address
         val rssi = result.rssi
+
+        // RSSI strength filter constraint from settings
+        if (rssi < _rssiThreshold.value) return
 
         val current = _discoveredMeters.value.toMutableList()
         val index = current.indexOfFirst { it.address == address }
