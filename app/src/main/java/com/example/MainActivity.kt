@@ -553,7 +553,7 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
     fun exportDataToCsv(context: Context) {
         viewModelScope.launch {
             try {
-                val header = "Record Timestamp,Meter Name,MAC Address,RSSI (dBm),Voltage (V),Current (A/Amps),Active Power (kW),Grid Frequency (Hz),Battery (%),Cumulative Usage (kWh),Connection State,Alert State,Estimated Distance (m)"
+                val header = "Record Timestamp,Meter Name,MAC Address,RSSI (dBm),Voltage (V),Current (A/Amps),Active Power (kW),Grid Frequency (Hz),Cumulative Usage (kWh),Connection State,Alert State,Estimated Distance (m)"
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 val rows = mutableListOf<String>()
 
@@ -569,7 +569,6 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
                             String.format(Locale.US, "%.3f", meter.telemetry.current),
                             String.format(Locale.US, "%.4f", meter.telemetry.activePowerKw),
                             String.format(Locale.US, "%.2f", meter.telemetry.gridFrequencyHz),
-                            meter.telemetry.batteryPercentage.toString(),
                             String.format(Locale.US, "%.3f", meter.telemetry.cumulativeKwh),
                             meter.connectionState.name,
                             (meter.telemetry.alertState ?: "None").replace(",", " "),
@@ -580,7 +579,7 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
                 }
 
                 if (rows.isEmpty()) {
-                    rows.add("${sdf.format(Date())},No meter telemetry captured yet,,0,0.0,0.0,0.0,0.0,0,0.0,DISCONNECTED,None,0.0")
+                    rows.add("${sdf.format(Date())},No meter telemetry captured yet,,0,0.0,0.0,0.0,0.0,0.0,DISCONNECTED,None,0.0")
                 }
 
                 val csvContent = (listOf(header) + rows).joinToString("\n")
@@ -730,13 +729,6 @@ class MeterScannerViewModel(application: Application) : AndroidViewModel(applica
                             BleCharacteristicInfo("00002A29-0000-1000-8000-00805F9B34FB", "Manufacturer Name", "Demo Utility Corp", "READ"),
                             BleCharacteristicInfo("00002A24-0000-1000-8000-00805F9B34FB", "Model Number", "DLMS-M22615", "READ"),
                             BleCharacteristicInfo("00002A26-0000-1000-8000-00805F9B34FB", "Firmware Revision", "v4.18.2-SIM", "READ")
-                        )
-                    ),
-                    BleServiceInfo(
-                        uuid = "0000180F-0000-1000-8000-00805F9B34FB",
-                        name = "Battery Service",
-                        characteristics = listOf(
-                            BleCharacteristicInfo("00002A19-0000-1000-8000-00805F9B34FB", "Battery Level", "${meter.telemetry.batteryPercentage}", "READ, NOTIFY")
                         )
                     ),
                     BleServiceInfo(

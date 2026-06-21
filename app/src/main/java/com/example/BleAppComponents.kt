@@ -1636,7 +1636,6 @@ fun DeviceDetailsScreen(
                     TelemetryField("RMS Node Current", "%.2f A".format(meter.telemetry.current), MeterIconType.CURRENT),
                     TelemetryField("Active Load Demand", "%.3f kW".format(meter.telemetry.activePowerKw), MeterIconType.POWER),
                     TelemetryField("Grid Frequency", "%.3f Hz".format(meter.telemetry.gridFrequencyHz), MeterIconType.FREQUENCY),
-                    TelemetryField("Sensor Battery", "${meter.telemetry.batteryPercentage}%", MeterIconType.BATTERY),
                     TelemetryField("Cumulative Energy", "%.1f kWh".format(meter.telemetry.cumulativeKwh), MeterIconType.KWH)
                 )
 
@@ -1650,9 +1649,7 @@ fun DeviceDetailsScreen(
                                 modifier = Modifier.weight(1f),
                                 field = gridItems[i],
                                 theme = theme,
-                                tint = if (gridItems[i].iconType == MeterIconType.BATTERY) {
-                                    if (meter.telemetry.batteryPercentage > 50) theme.primary else Color(0xFFEF4444)
-                                } else theme.secondary
+                                tint = theme.secondary
                             )
                             if (i + 1 < gridItems.size) {
                                 TelemetryMiniCard(
@@ -1673,8 +1670,6 @@ fun DeviceDetailsScreen(
                 val tariffRate by viewModel.tariffRate.collectAsState()
                 val fixedCharge by viewModel.fixedCharge.collectAsState()
                 val msedclZone by viewModel.msedclZone.collectAsState()
-                val consumerName by viewModel.consumerName.collectAsState()
-                val consumerNumber by viewModel.consumerNumber.collectAsState()
 
                 val rawEnergyCost = meter.telemetry.cumulativeKwh * tariffRate
                 val totalEstimatedBill = rawEnergyCost + fixedCharge
@@ -1701,7 +1696,7 @@ fun DeviceDetailsScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "ACTIVE CONSUMER COST MONITOR",
+                                    text = "ACTIVE STATION COST MONITOR",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = theme.textPrimary,
@@ -1718,7 +1713,7 @@ fun DeviceDetailsScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Customer Details Banner
+                        // Station Grid Details Banner
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1729,14 +1724,14 @@ fun DeviceDetailsScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "CONSUMER: ${consumerName.uppercase()}",
+                                    text = "GRID CONNECTION",
                                     fontSize = 10.sp,
                                     color = theme.textPrimary,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    text = "NO: $consumerNumber",
+                                    text = "MAC: ${meter.address}",
                                     fontSize = 9.sp,
                                     color = theme.textSecondary,
                                     fontFamily = FontFamily.Monospace
@@ -2112,15 +2107,9 @@ fun ThemeSettingsTab(
     val tariffRate by viewModel.tariffRate.collectAsState()
     val fixedCharge by viewModel.fixedCharge.collectAsState()
     val msedclZone by viewModel.msedclZone.collectAsState()
-    val consumerNumber by viewModel.consumerNumber.collectAsState()
-    val consumerName by viewModel.consumerName.collectAsState()
     val rssiThreshold by viewModel.rssiThreshold.collectAsState()
     val scanPrefix by viewModel.scanFilterPrefix.collectAsState()
     val showAllBle by viewModel.showAllBleDevices.collectAsState()
-
-    var editProfile by remember { mutableStateOf(false) }
-    var tempName by remember(consumerName) { mutableStateOf(consumerName) }
-    var tempNumber by remember(consumerNumber) { mutableStateOf(consumerNumber) }
 
     var editTariff by remember { mutableStateOf(false) }
     var tempTariff by remember(tariffRate) { mutableStateOf(tariffRate.toString()) }
@@ -2136,106 +2125,6 @@ fun ThemeSettingsTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Consumer Profile Card
-        Card(
-            modifier = Modifier.fillMaxWidth().testTag("consumer_profile_settings_card"),
-            colors = CardDefaults.cardColors(containerColor = theme.cardBg),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, theme.border)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "MSEDCL CONSUMER PROFILE",
-                        fontSize = 10.sp,
-                        color = theme.accent,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    
-                    Text(
-                        text = if (editProfile) "CANCEL" else "EDIT PROFILE",
-                        fontSize = 10.sp,
-                        color = theme.primary,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .clickable {
-                                if (editProfile) {
-                                    tempName = consumerName
-                                    tempNumber = consumerNumber
-                                }
-                                editProfile = !editProfile
-                            }
-                            .padding(4.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (editProfile) {
-                    OutlinedTextField(
-                        value = tempName,
-                        onValueChange = { tempName = it },
-                        label = { Text("Consumer Name", color = theme.textSecondary, fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().testTag("edit_consumer_name_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = theme.textPrimary,
-                            unfocusedTextColor = theme.textPrimary,
-                            focusedBorderColor = theme.primary,
-                            unfocusedBorderColor = theme.border
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = tempNumber,
-                        onValueChange = { tempNumber = it },
-                        label = { Text("MSEDCL Connection Number", color = theme.textSecondary, fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().testTag("edit_consumer_number_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = theme.textPrimary,
-                            unfocusedTextColor = theme.textPrimary,
-                            focusedBorderColor = theme.primary,
-                            unfocusedBorderColor = theme.border
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        modifier = Modifier.fillMaxWidth().testTag("save_profile_button"),
-                        onClick = {
-                            viewModel.updateConsumerProfile(tempNumber.trim(), tempName.trim())
-                            editProfile = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = theme.primary, contentColor = theme.background)
-                    ) {
-                        Text("SAVE PROFILE CONFIGURATION", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(theme.background)
-                            .padding(12.dp)
-                            .clip(RoundedCornerShape(6.dp)),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("SUBSCRIBER NAME:", fontSize = 10.sp, color = theme.textSecondary)
-                            Text(consumerName, fontSize = 10.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("CONSUMER NUMBER:", fontSize = 10.sp, color = theme.textSecondary)
-                            Text(consumerNumber, fontSize = 10.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                }
-            }
-        }
 
         // Tariff & Rate Config Card
         Card(
