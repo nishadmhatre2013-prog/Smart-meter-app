@@ -410,6 +410,36 @@ fun BleScannerTab(
                     }
                 }
 
+                // Scan Control Button
+                item {
+                    Button(
+                        onClick = {
+                            if (isScanning) viewModel.stopScan() else viewModel.startScan()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isScanning) Color(0xFFEF4444) else theme.primary,
+                            contentColor = if (isScanning) Color.White else Color.Black
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .testTag("toggle_scan_button")
+                    ) {
+                        if (isScanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("STOP SCANNING", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        } else {
+                            Text("START SCANNING", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 // Item 2: Account Profile & Plan Status Panel
                 item {
                     val currentUser by viewModel.currentUser.collectAsState()
